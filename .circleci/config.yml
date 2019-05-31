@@ -1,6 +1,6 @@
 version: 2
 jobs:
-  build:
+  build_branch:
     working_directory: /app
     docker:
       - image: docker:17.05.0-ce-git
@@ -10,40 +10,75 @@ jobs:
       - run:
           name: Install dependencies
           command: |
+            apk update
+            apk upgrade
             apk add --no-cache \
-              py-pip \
-              curl \
-              curl-dev
-            pip install \
-              docker-compose
+              py-pip           \
+              curl             \
+              curl-dev         \
+              bash
       - run:
-          name: Build Docker Images
+          name: Build Branch Images
           command: |
             set +o pipefail
-            sh buildscripts/release.sh
-            if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              sh buildscripts/buildSupportedJiraImages.sh
-            else
-              sh buildscripts/buildDevelopmentImages.sh
-            fi
+            bash buildscripts/buildDevelopmentImages.sh
       - run:
-          name: Test Docker Images
+          name: Test Branch Images
           command: |
-            sh buildscripts/release.sh
-            if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              sh buildscripts/testSupportedJiraImages.sh
-            else
-              sh buildscripts/testDevelopmentImages.sh
-            fi
+            bash buildscripts/testDevelopmentImages.sh
+
+  build_releases:
+    working_directory: /app
+    docker:
+      - image: docker:17.05.0-ce-git
+    steps:
+      - checkout
+      - setup_remote_docker
       - run:
-          name: Release Docker Images
+          name: Install dependencies
           command: |
-            if [ "${CIRCLE_BRANCH}" == "master" ]; then
-              docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}
-              sh buildscripts/release.sh
-              sh buildscripts/releaseSupportedJiraImages.sh
-            elif [ "${CIRCLE_BRANCH}" == "dev" ]; then
-              docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}
-              sh buildscripts/release.sh
-              sh buildscripts/releaseDevelopmentImages.sh
-            fi
+            apk update
+            apk upgrade
+            apk add --no-cache \
+              py-pip           \
+              curl             \
+              curl-dev         \
+              bash
+      - run:
+          name: Build Docker Release Images
+          command: |
+            set +o pipefail
+            bash buildscripts/buildSupportedJiraImages.sh
+      - run:
+          name: Test Docker Release Images
+          command: |
+            bash buildscripts/testSupportedJiraImages.sh
+      - run:
+          name: Push Dockerhub Release Images
+          command: |
+            docker login -u ${DOCKER_USER} -p ${DOCKER_PASS}
+            bash buildscripts/releaseSupportedJiraImages.sh
+
+workflows:
+  version: 2
+  build_pipeline:
+    jobs:
+      - build_releases:
+          filters:
+            branches:
+              only: master
+      - build_branch:
+          filters:
+            branches:
+              ignore:
+                - master
+  nightly:
+    triggers:
+      - schedule:
+          cron: "0 1 * * 1"
+          filters:
+            branches:
+              only:
+                - master
+    jobs:
+      - build_releases

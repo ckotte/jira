@@ -11,12 +11,21 @@ set -o errexit
 [[ ${DEBUG} == true ]] && set -x
 
 #
+# This function purges osgi plugins when env is true
+#
+function purgeJiraPlugins() {
+  if [ "$JIRA_PURGE_PLUGINS_ONSTART" = 'true' ]; then
+    bash /usr/local/share/atlassian/purgeplugins.sh
+  fi
+}
+
+#
 # This function will replace variables inside the script setenv.sh
 #
 function updateSetEnv() {
   local propertyname=$1
   local propertyvalue=$2
-  sed -i -e "/${propertyname}=/c${propertyname}=\"${propertyvalue}\"" /opt/jira/bin/setenv.sh
+  sed -i -e "/${propertyname}=/c${propertyname}=\"${propertyvalue}\"" ${JIRA_INSTALL}/bin/setenv.sh
 }
 
 function setAllSetEnvs() {
@@ -96,7 +105,7 @@ if [ -n "${JIRA_PROXY_SCHEME}" ]; then
   xmlstarlet ed -P -S -L --insert "//Connector[not(@scheme)]" --type attr -n scheme --value "${JIRA_PROXY_SCHEME}" ${JIRA_INSTALL}/conf/server.xml
 fi
 
-jira_logfile="/var/atlassian/jira/log"
+jira_logfile="${JIRA_HOME}/log"
 
 if [ -n "${JIRA_LOGFILE_LOCATION}" ]; then
   jira_logfile=${JIRA_LOGFILE_LOCATION}
@@ -130,6 +139,7 @@ setAllSetEnvs
 
 if [ "$1" = 'jira' ] || [ "${1:0:1}" = '-' ]; then
   waitForDB
+  purgeJiraPlugins
   /bin/bash ${JIRA_SCRIPTS}/launch.sh
   if [ -n "${JIRA_PROXY_PATH}" ]; then
     xmlstarlet ed -P -S -L --update "//Context/@path" --value "${JIRA_PROXY_PATH}" ${JIRA_INSTALL}/conf/server.xml
